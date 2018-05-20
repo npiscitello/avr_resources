@@ -71,9 +71,19 @@ main:
   ; globally enable interrupts
   sei
 
-  ; setup screen buffer in RAM
+  ; setup screen buffer in RAM, initialize to blank
   ldi PL,low(RAMSTART)
   ldi PH,high(RAMSTART)
+  ldi TEMP,0x00
+  ; this could turn into a loop later...
+  std Z+0,TEMP;
+  std Z+1,TEMP;
+  std Z+2,TEMP;
+  std Z+3,TEMP;
+  std Z+4,TEMP;
+  std Z+5,TEMP;
+  std Z+6,TEMP;
+  std Z+7,TEMP;
 
   ; jump to max7221 setup
   rjmp max_setup
@@ -102,9 +112,6 @@ max_setup:
   ldi VAL,0x00
   rcall send_packet
 
-  ; clear the display
-  ldi VAL,0x00
-
   ; jump to main application logic
   rjmp loop
 
@@ -112,7 +119,33 @@ max_setup:
 
 .global loop
 loop:
-  ; interrupts and subroutines handle application logic
+  ; update the display - this could turn into a loop?
+  ; the screen buffer in RAM is updated by the timer interrupt
+  ldd REG,0x00
+  ldd VAL,Z+0
+  rcall send_packet
+  ldd REG,0x01
+  ldd VAL,Z+1
+  rcall send_packet
+  ldd REG,0x02
+  ldd VAL,Z+2
+  rcall send_packet
+  ldd REG,0x03
+  ldd VAL,Z+3
+  rcall send_packet
+  ldd REG,0x04
+  ldd VAL,Z+4
+  rcall send_packet
+  ldd REG,0x05
+  ldd VAL,Z+5
+  rcall send_packet
+  ldd REG,0x06
+  ldd VAL,Z+6
+  rcall send_packet
+  ldd REG,0x07
+  ldd VAL,Z+7
+  rcall send_packet
+
   rjmp loop
 
 
