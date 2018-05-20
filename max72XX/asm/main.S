@@ -7,6 +7,13 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+; The timer frequency is approximately 122Hz, meaning 
+; our maximum animation frame rate is 122 fps. So, to 
+; get 60 FPS, we need to change the frame every 2nd tick,
+; 30 FPS is every 4th, etc. This number is how many ticks
+; the timer takes before the frame changes, max 0xFF.
+#define TICKS 0x08
+
 ;=== REGISTER MAP ===;
 ; temporary working reg
 #define TEMP r16
@@ -25,13 +32,12 @@
 
 .global main
 main:
-  ; divide 8 MHz internal crystal by 64
-  ; the clock is already divided by 8 due to fuse settings
-  ; set prescaler to divide that signal by 8 additionally
-  ; this gives a system clock speed of 1 MHz / 8 = 125 kHz
+  ; divide 8 MHz internal crystal by 64: 8MHz / 64 = 125 kHz
+  ; the fuse sets the prescaler to divide by 8 initially, that
+  ; setting is overwritten here
   ldi TEMP,0x00 | _BV(CLKPCE)
   sts CLKPR,TEMP
-  ldi TEMP, 0x00 | _BV(CLKPS1) | _BV(CLKPS0)
+  ldi TEMP, 0x00 | _BV(CLKPS2) | _BV(CLKPS1)
   sts CLKPR,TEMP
 
   ; power on the timer and SPI peripherals
@@ -66,21 +72,28 @@ main:
   ldi TEMP,0x00 | _BV(OCIE0A)
   sts TIMSK0,TEMP
   ; set the output compare
-  ldi TEMP,0xFF
+  ldi TEMP,TICKS
   out _SFR_IO_ADDR(OCR0A),TEMP
 
-  ; setup screen buffer in RAM, initialize to blank
+  ; setup screen buffer in RAM, initialize to first frame
   ldi PL,low(RAMSTART)
   ldi PH,high(RAMSTART)
-  ldi TEMP,0x00
+  ldi TEMP,0x0F
   ; this could turn into a loop later...
   std Z+0,TEMP;
+  rcall roll_reg
   std Z+1,TEMP;
+  rcall roll_reg
   std Z+2,TEMP;
+  rcall roll_reg
   std Z+3,TEMP;
+  rcall roll_reg
   std Z+4,TEMP;
+  rcall roll_reg
   std Z+5,TEMP;
+  rcall roll_reg
   std Z+6,TEMP;
+  rcall roll_reg
   std Z+7,TEMP;
 
   ; set up max7221
@@ -134,10 +147,40 @@ TIMER0_COMPA_vect:
   ; push status register onto stack
   in TEMP,_SFR_IO_ADDR(SREG)
   push TEMP
+
   ; update pattern on LED matrix
   ldd TEMP,Z+0
-  inc TEMP
+  rcall roll_reg
   std Z+0,TEMP
+
+  ldd TEMP,Z+1
+  rcall roll_reg
+  std Z+1,TEMP
+
+  ldd TEMP,Z+2
+  rcall roll_reg
+  std Z+2,TEMP
+
+  ldd TEMP,Z+3
+  rcall roll_reg
+  std Z+3,TEMP
+
+  ldd TEMP,Z+4
+  rcall roll_reg
+  std Z+4,TEMP
+
+  ldd TEMP,Z+5
+  rcall roll_reg
+  std Z+5,TEMP
+
+  ldd TEMP,Z+6
+  rcall roll_reg
+  std Z+6,TEMP
+
+  ldd TEMP,Z+7
+  rcall roll_reg
+  std Z+7,TEMP
+
   ; restore status register
   pop TEMP
   out _SFR_IO_ADDR(SREG),TEMP
@@ -201,4 +244,18 @@ wait_transmit:
   ; skip the next line if the transmission has completed
   sbrs TEMP,SPIF
   rjmp wait_transmit
+  ret
+
+
+
+.global roll_reg
+roll_reg:
+  ror TEMP
+  brcs carry_set
+  cbr TEMP,0x80
+  ret
+
+.global carry_set
+carry_set: 
+  sbr TEMP,0x80
   ret

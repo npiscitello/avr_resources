@@ -62,7 +62,7 @@ MCU = atmega328
 #         F_CPU = 16000000
 #         F_CPU = 18432000
 #         F_CPU = 20000000
-F_CPU = 16000000
+F_CPU = 125000
 
 
 # Output format. (can be srec, ihex, binary)
@@ -302,6 +302,8 @@ AVRDUDE_FLAGS = -p $(MCU) -c $(AVRDUDE_PROGRAMMER)
 AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
 AVRDUDE_FLAGS += $(AVRDUDE_ERASE_COUNTER)
+# since the AVR is severely underclocked, we need to slow down comms
+AVRDUDE_FLAGS += -B 30
 
 
 
