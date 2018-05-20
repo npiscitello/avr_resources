@@ -15,6 +15,9 @@
 #define TICKS_FRAME 0x08
 #define TICKS_BRIGHT 0x20
 
+; the brightness at which the brightness movement direction switches
+#define DIR_SWITCH 0x00
+
 ;=== REGISTER MAP ===;
 ; temporary working reg
 #define TEMP r16
@@ -22,8 +25,11 @@
 #define REG r17
 ; value to write to the MAX7221
 #define VAL r18
-; brightness value
+; brightness value and direction - ascending is zero,
+; descending is any non-zero value
 #define BRIGHT r19
+#define DIR r20
+#define ASC 0x00
 ; low RAM pointer to frame buffer
 #define PL r30
 ; high RAM pointer to frame buffer
@@ -116,6 +122,10 @@ main:
   std Z+6,TEMP;
   rcall roll_reg
   std Z+7,TEMP;
+
+  ; set initial brightness and direction
+  ldi BRIGHT,0x00
+  ldi DIR,ASC
 
   ; set up max7221
   rcall max_setup
@@ -218,7 +228,16 @@ TIMER2_COMPA_vect:
 
   ; adjust brightness
   inc BRIGHT
+  CPSE DIR,ASC
+  subi BRIGHT,2
+  ; we will switch directions at a certain brightness
+  CPSE BRIGHT,DIR_SWITCH
+  rjmp return_from_timer2_isr
+  COM DIR
+  rjmp return_from_timer2_isr
 
+.global return_from_timer2_isr
+return_from_timer2_isr:
   ; restore status register
   pop TEMP
   out _SFR_IO_ADDR(SREG),TEMP
