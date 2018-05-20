@@ -14,6 +14,10 @@
 #define REG r17
 ; value to write to the MAX7221
 #define VAL r18
+; low RAM pointer
+#define PL r30
+; high RAM pointer
+#define PH r31
 
 ;=== UTILITY MACROS ===;
 #define low(x) ((x) & 0xFF)
@@ -38,7 +42,7 @@ main:
   ; pins: SS = PB2, MOSI = PB3, SCK = PB5
   ldi TEMP, 0x00 | _BV(DDB2) | _BV(DDB3) | _BV(DDB5);
   out _SFR_IO_ADDR(DDRB),TEMP
-  ldi TEMP, 0x00 | _BV(SPIE) | _BV(SPE) | _BV(MSTR);
+  ldi TEMP, 0x00 | _BV(SPE) | _BV(MSTR);
   out _SFR_IO_ADDR(SPCR),TEMP
   ldi TEMP, 0x00 | _BV(SPI2X);
   out _SFR_IO_ADDR(SPSR), TEMP
@@ -67,12 +71,73 @@ main:
   ; globally enable interrupts
   sei
 
+  ; setup screen buffer in RAM
+  ldi PL,low(RAMSTART)
+  ldi PH,high(RAMSTART)
+
+  ; jump to max7221 setup
+  rjmp max_setup
+
+
+
+.global max_setup
+max_setup:
+  ; don't use the decode tables
+  ldi REG,0x09
+  ldi VAL,0x00
+  rcall send_packet
+
+  ; set the lowest intensity
+  ldi REG,0x09
+  ldi VAL,0x00
+  rcall send_packet
+
+  ; scan across all the digits
+  ldi REG,0x09
+  ldi VAL,0x00
+  rcall send_packet
+
+  ; take the chip out of shutdown
+  ldi REG,0x09
+  ldi VAL,0x00
+  rcall send_packet
+
+  ; clear the display
+  ldi VAL,0x00
+
+  ; jump to main application logic
+  rjmp loop
+
+
+
+.global loop
+loop:
+  ; interrupts and subroutines handle application logic
+  rjmp loop
+
+
+
 .global TIMER0_COMPA_vect
 TIMER0_COMPA_vect:
+  ; push status register onto stack
+  in TEMP,_SFR_IO_ADDR(SREG)
+  push TEMP
 
-.global transmit
-transmit:
+  ; update pattern on LED matrix
+
+  ; restore status register
+  pop TEMP
+  out _SFR_IO_ADDR(SREG),TEMP
+  reti
+
+
+
+.global send_packet
+send_packet:
+  ; we don't need to worry about the status reg here
+  ; b/c we always know when this is going to execute
   ; set CS low
   ; write the MAX7221 address
   ; write the MAX7221 value
   ; bring CS high
+  ret
