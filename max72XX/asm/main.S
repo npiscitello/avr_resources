@@ -74,7 +74,7 @@ main:
   ; setup screen buffer in RAM, initialize to blank
   ldi PL,low(RAMSTART)
   ldi PH,high(RAMSTART)
-  ldi TEMP,0x00
+  ldi TEMP,0xFF
   ; this could turn into a loop later...
   std Z+0,TEMP;
   std Z+1,TEMP;
@@ -97,20 +97,43 @@ max_setup:
   ldi VAL,0x00
   rcall send_packet
 
-  ; set the lowest intensity
-  ldi REG,0x09
-  ldi VAL,0x00
+  ; set a middle intensity
+  ldi REG,0x0A
+  ldi VAL,0x07
   rcall send_packet
 
   ; scan across all the digits
-  ldi REG,0x09
+  ldi REG,0x0B
+  ldi VAL,0x07
+  rcall send_packet
+
+  ; clear display
   ldi VAL,0x00
+  ldi REG,0x01
+  rcall send_packet
+  ldi REG,0x02
+  rcall send_packet
+  ldi REG,0x03
+  rcall send_packet
+  ldi REG,0x04
   rcall send_packet
 
   ; take the chip out of shutdown
-  ldi REG,0x09
-  ldi VAL,0x00
+  ldi REG,0x0C
+  ldi VAL,0x01
   rcall send_packet
+
+  ;; for debugging; set the first row on, the second halfway, and the third off
+  ;ldi REG,0x01
+  ;ldi VAL,0xFF
+  ;rcall send_packet
+  ;ldi REG,0x02
+  ;ldi VAL,0x0F
+  ;rcall send_packet
+  ;ldi REG,0x03
+  ;ldi VAL,0x00
+  ;rcall send_packet
+  ldi VAL,0x00
 
   ; jump to main application logic
   rjmp loop
@@ -119,32 +142,34 @@ max_setup:
 
 .global loop
 loop:
-  ; update the display - this could turn into a loop?
-  ; the screen buffer in RAM is updated by the timer interrupt
-  ldd REG,0x00
-  ldd VAL,Z+0
+  ldi REG,0x01
   rcall send_packet
-  ldd REG,0x01
-  ldd VAL,Z+1
-  rcall send_packet
-  ldd REG,0x02
-  ldd VAL,Z+2
-  rcall send_packet
-  ldd REG,0x03
-  ldd VAL,Z+3
-  rcall send_packet
-  ldd REG,0x04
-  ldd VAL,Z+4
-  rcall send_packet
-  ldd REG,0x05
-  ldd VAL,Z+5
-  rcall send_packet
-  ldd REG,0x06
-  ldd VAL,Z+6
-  rcall send_packet
-  ldd REG,0x07
-  ldd VAL,Z+7
-  rcall send_packet
+  ;; update the display - this could turn into a loop?
+  ;; the screen buffer in RAM is updated by the timer interrupt
+  ;ldi REG,0x01
+  ;ldd VAL,Z+0
+  ;rcall send_packet
+  ;ldi REG,0x02
+  ;ldd VAL,Z+1
+  ;rcall send_packet
+  ;ldi REG,0x03
+  ;ldd VAL,Z+2
+  ;rcall send_packet
+  ;ldi REG,0x04
+  ;ldd VAL,Z+3
+  ;rcall send_packet
+  ;ldi REG,0x05
+  ;ldd VAL,Z+4
+  ;rcall send_packet
+  ;ldi REG,0x06
+  ;ldd VAL,Z+5
+  ;rcall send_packet
+  ;ldi REG,0x07
+  ;ldd VAL,Z+6
+  ;rcall send_packet
+  ;ldi REG,0x08
+  ;ldd VAL,Z+7
+  ;rcall send_packet
 
   rjmp loop
 
@@ -157,6 +182,7 @@ TIMER0_COMPA_vect:
   push TEMP
 
   ; update pattern on LED matrix
+  inc VAL
 
   ; restore status register
   pop TEMP
@@ -170,7 +196,24 @@ send_packet:
   ; we don't need to worry about the status reg here
   ; b/c we always know when this is going to execute
   ; set CS low
+  ldi TEMP, !_BV(PORTB2)
+  out _SFR_IO_ADDR(PORTB), TEMP
   ; write the MAX7221 address
+  out _SFR_IO_ADDR(SPDR),REG
+  rcall wait_transmit
   ; write the MAX7221 value
+  out _SFR_IO_ADDR(SPDR),VAL
+  rcall wait_transmit
   ; bring CS high
+  ldi TEMP, _BV(PORTB2)
+  out _SFR_IO_ADDR(PORTB), TEMP
+  ret
+
+
+
+.global wait_transmit
+wait_transmit:
+  in TEMP,_SFR_IO_ADDR(SPSR)
+  sbrs TEMP,SPIF
+  rjmp wait_transmit
   ret
