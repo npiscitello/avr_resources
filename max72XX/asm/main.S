@@ -68,13 +68,11 @@ main:
   ; set the output compare
   ldi TEMP,0xFF
   out _SFR_IO_ADDR(OCR0A),TEMP
-  ; globally enable interrupts
-  sei
 
   ; setup screen buffer in RAM, initialize to blank
   ldi PL,low(RAMSTART)
   ldi PH,high(RAMSTART)
-  ldi TEMP,0x0F
+  ldi TEMP,0x00
   ; this could turn into a loop later...
   std Z+0,TEMP;
   std Z+1,TEMP;
@@ -85,8 +83,13 @@ main:
   std Z+6,TEMP;
   std Z+7,TEMP;
 
-  ; jump to max7221 setup
-  rjmp max_setup
+  ; set up max7221
+  rcall max_setup
+
+  ; globally enable interrupts
+  sei
+  ; jump to main application logic
+  rjmp loop
 
 
 
@@ -107,20 +110,43 @@ max_setup:
   ldi VAL,0x07
   rcall send_packet
 
+  ; write out the initial screen buffer
+  rcall update_screen
+
   ; take the chip out of shutdown
   ldi REG,0x0C
   ldi VAL,0x01
   rcall send_packet
 
-  ; jump to main application logic
-  rjmp loop
+  ret
 
 
 
 .global loop
 loop:
-  ; update the display - this could turn into a loop?
-  ; the screen buffer in RAM is updated by the timer interrupt
+  rcall update_screen
+  rjmp loop
+
+
+
+.global TIMER0_COMPA_vect
+TIMER0_COMPA_vect:
+  ; push status register onto stack
+  in TEMP,_SFR_IO_ADDR(SREG)
+  push TEMP
+  ; update pattern on LED matrix
+  ldd TEMP,Z+0
+  inc TEMP
+  std Z+0,TEMP
+  ; restore status register
+  pop TEMP
+  out _SFR_IO_ADDR(SREG),TEMP
+  reti
+
+
+
+.global update_screen
+update_screen:
   ldi REG,0x01
   ldd VAL,Z+0
   rcall send_packet
@@ -146,24 +172,6 @@ loop:
   ldd VAL,Z+7
   rcall send_packet
 
-  rjmp loop
-
-
-
-.global TIMER0_COMPA_vect
-TIMER0_COMPA_vect:
-  ; push status register onto stack
-  in TEMP,_SFR_IO_ADDR(SREG)
-  push TEMP
-
-  ; update pattern on LED matrix
-  inc VAL
-
-  ; restore status register
-  pop TEMP
-  out _SFR_IO_ADDR(SREG),TEMP
-  reti
-
 
 
 .global send_packet
@@ -188,7 +196,9 @@ send_packet:
 
 .global wait_transmit
 wait_transmit:
+  ; load in the SPI status register
   in TEMP,_SFR_IO_ADDR(SPSR)
+  ; skip the next line if the transmission has completed
   sbrs TEMP,SPIF
   rjmp wait_transmit
   ret
