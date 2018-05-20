@@ -1,0 +1,2 @@
+To upload a hex file to flash on an ATMEGA328P: `avrdude -c usbtiny -p m328p -U flash:w:<filename>.hex`
+...more generally: `avrdude -c usbtiny -p m328p -U <MEMTYPE>:r|w|v:<filename>`
