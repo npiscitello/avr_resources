@@ -11,8 +11,9 @@
 ; our maximum animation frame rate is 122 fps. So, to 
 ; get 60 FPS, we need to change the frame every 2nd tick,
 ; 30 FPS is every 4th, etc. This number is how many ticks
-; the timer takes before the frame changes, max 0xFF.
-#define TICKS 0x08
+; the timer takes before resetting, max 0xFF.
+#define TICKS_FRAME 0x08
+#define TICKS_BRIGHT 0x20
 
 ;=== REGISTER MAP ===;
 ; temporary working reg
@@ -21,9 +22,11 @@
 #define REG r17
 ; value to write to the MAX7221
 #define VAL r18
-; low RAM pointer
+; brightness value
+#define BRIGHT r19
+; low RAM pointer to frame buffer
 #define PL r30
-; high RAM pointer
+; high RAM pointer to frame buffer
 #define PH r31
 
 ;=== UTILITY MACROS ===;
@@ -59,6 +62,7 @@ main:
   ldi TEMP,high(RAMEND)
   out _SFR_IO_ADDR(SPH),TEMP
 
+  ; timer/counter 0 - frame refresh rate
   ; set up the timer/counter 0 mode (CTC)
   ldi TEMP,0x00 | _BV(WGM01)
   out _SFR_IO_ADDR(TCCR0A),TEMP
@@ -72,8 +76,25 @@ main:
   ldi TEMP,0x00 | _BV(OCIE0A)
   sts TIMSK0,TEMP
   ; set the output compare
-  ldi TEMP,TICKS
+  ldi TEMP,TICKS_FRAME
   out _SFR_IO_ADDR(OCR0A),TEMP
+
+  ; timer/counter 2 - brighness update rate
+  ; set up the timer/counter 2 mode (CTC)
+  ldi TEMP,0x00 | _BV(WGM21)
+  sts TCCR2A,TEMP
+  ; set up the timer/counter 2 clock source (sys / 1024)
+  ldi TEMP,0x00 | _BV(CS22) | _BV(CS21) | _BV(CS20)
+  sts TCCR2B,TEMP
+  ; clear pending interrupts
+  ldi TEMP,0x00 | _BV(TOV2)
+  out _SFR_IO_ADDR(TIFR2),TEMP
+  ; enable timer/counter 2 output compare A interrupt
+  ldi TEMP,0x00 | _BV(OCIE2A)
+  sts TIMSK2,TEMP
+  ; set the output compare
+  ldi TEMP,TICKS_BRIGHT
+  sts OCR2A,TEMP
 
   ; setup screen buffer in RAM, initialize to first frame
   ldi PL,low(RAMSTART)
@@ -138,6 +159,7 @@ max_setup:
 .global loop
 loop:
   rcall update_screen
+  rcall update_brightness
   rjmp loop
 
 
@@ -188,6 +210,22 @@ TIMER0_COMPA_vect:
 
 
 
+.global TIMER2_COMPA_vect
+TIMER2_COMPA_vect:
+  ; push status register onto stack
+  in TEMP,_SFR_IO_ADDR(SREG)
+  push TEMP
+
+  ; adjust brightness
+  inc BRIGHT
+
+  ; restore status register
+  pop TEMP
+  out _SFR_IO_ADDR(SREG),TEMP
+  reti
+
+
+
 .global update_screen
 update_screen:
   ldi REG,0x01
@@ -214,6 +252,16 @@ update_screen:
   ldi REG,0x08
   ldd VAL,Z+7
   rcall send_packet
+  ret
+
+
+
+.global update_brightness
+update_brightness:
+  ldi REG,0x0A
+  mov VAL,BRIGHT
+  rcall send_packet
+  ret
 
 
 
