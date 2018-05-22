@@ -13,23 +13,30 @@
 ; 30 FPS is every 4th, etc. This number is how many ticks
 ; the timer takes before resetting, max 0xFF.
 #define TICKS_FRAME 0x08
-#define TICKS_BRIGHT 0x20
+#define TICKS_BRIGHT 0x10
 
 ; the brightness at which the brightness movement direction switches
-#define DIR_SWITCH 0x00
+#define DIR_SWITCH 0x20
 
 ;=== REGISTER MAP ===;
 ; temporary working reg
 #define TEMP r16
+
 ; reg to write on the MAX7221
 #define REG r17
+
 ; value to write to the MAX7221
 #define VAL r18
+
 ; brightness value and direction - ascending is zero,
 ; descending is any non-zero value
 #define BRIGHT r19
 #define DIR r20
 #define ASC 0x00
+
+; register used to load in compare values
+#define COMP r21
+
 ; low RAM pointer to frame buffer
 #define PL r30
 ; high RAM pointer to frame buffer
@@ -128,17 +135,6 @@ main:
   ldi DIR,ASC
 
   ; set up max7221
-  rcall max_setup
-
-  ; globally enable interrupts
-  sei
-  ; jump to main application logic
-  rjmp loop
-
-
-
-.global max_setup
-max_setup:
   ; don't use the decode tables
   ldi REG,0x09
   ldi VAL,0x00
@@ -162,11 +158,13 @@ max_setup:
   ldi VAL,0x01
   rcall send_packet
 
-  ret
+  ; globally enable interrupts
+  sei
+  ; jump to main application logic
+  rjmp loop
 
 
 
-.global loop
 loop:
   rcall update_screen
   rcall update_brightness
@@ -184,31 +182,24 @@ TIMER0_COMPA_vect:
   ldd TEMP,Z+0
   rcall roll_reg
   std Z+0,TEMP
-
   ldd TEMP,Z+1
   rcall roll_reg
   std Z+1,TEMP
-
   ldd TEMP,Z+2
   rcall roll_reg
   std Z+2,TEMP
-
   ldd TEMP,Z+3
   rcall roll_reg
   std Z+3,TEMP
-
   ldd TEMP,Z+4
   rcall roll_reg
   std Z+4,TEMP
-
   ldd TEMP,Z+5
   rcall roll_reg
   std Z+5,TEMP
-
   ldd TEMP,Z+6
   rcall roll_reg
   std Z+6,TEMP
-
   ldd TEMP,Z+7
   rcall roll_reg
   std Z+7,TEMP
@@ -227,25 +218,29 @@ TIMER2_COMPA_vect:
   push TEMP
 
   ; adjust brightness
+  ldi COMP,ASC
   inc BRIGHT
-  CPSE DIR,ASC
+  cpse DIR,COMP
   subi BRIGHT,2
-  ; we will switch directions at a certain brightness
-  CPSE BRIGHT,DIR_SWITCH
-  rjmp return_from_timer2_isr
-  COM DIR
-  rjmp return_from_timer2_isr
 
-.global return_from_timer2_isr
+  ldi COMP,DIR_SWITCH
+  cpse BRIGHT,COMP
+  rjmp return_from_timer2_isr
+  rjmp BAD_isr_loop
+
 return_from_timer2_isr:
   ; restore status register
   pop TEMP
   out _SFR_IO_ADDR(SREG),TEMP
   reti
 
+BAD_isr_loop:
+  ;rjmp BAD_isr_loop
+  com DIR
+  rjmp return_from_timer2_isr
 
 
-.global update_screen
+
 update_screen:
   ldi REG,0x01
   ldd VAL,Z+0
@@ -275,7 +270,6 @@ update_screen:
 
 
 
-.global update_brightness
 update_brightness:
   ldi REG,0x0A
   mov VAL,BRIGHT
@@ -284,7 +278,6 @@ update_brightness:
 
 
 
-.global send_packet
 send_packet:
   ; we don't need to worry about the status reg here
   ; b/c we always know when this is going to execute
@@ -304,7 +297,6 @@ send_packet:
 
 
 
-.global wait_transmit
 wait_transmit:
   ; load in the SPI status register
   in TEMP,_SFR_IO_ADDR(SPSR)
@@ -315,14 +307,12 @@ wait_transmit:
 
 
 
-.global roll_reg
 roll_reg:
   ror TEMP
   brcs carry_set
   cbr TEMP,0x80
   ret
 
-.global carry_set
 carry_set: 
   sbr TEMP,0x80
   ret
