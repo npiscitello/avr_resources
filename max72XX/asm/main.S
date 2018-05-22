@@ -12,11 +12,12 @@
 ; get 60 FPS, we need to change the frame every 2nd tick,
 ; 30 FPS is every 4th, etc. This number is how many ticks
 ; the timer takes before resetting, max 0xFF.
-#define TICKS_FRAME 0x08
-#define TICKS_BRIGHT 0x10
+#define TICKS_FRAME 0x06
+#define TICKS_INTENSITY 0x10
 
-; the brightness at which the brightness movement direction switches
-#define DIR_SWITCH 0x20
+; the intensity bounds
+#define INTENSITY_HI 0x0F
+#define INTENSITY_LO 0x00
 
 ;=== REGISTER MAP ===;
 ; temporary working reg
@@ -28,9 +29,9 @@
 ; value to write to the MAX7221
 #define VAL r18
 
-; brightness value and direction - ascending is zero,
+; intensity value and direction - ascending is zero,
 ; descending is any non-zero value
-#define BRIGHT r19
+#define INTENSITY r19
 #define DIR r20
 #define ASC 0x00
 
@@ -106,7 +107,7 @@ main:
   ldi TEMP,0x00 | _BV(OCIE2A)
   sts TIMSK2,TEMP
   ; set the output compare
-  ldi TEMP,TICKS_BRIGHT
+  ldi TEMP,TICKS_INTENSITY
   sts OCR2A,TEMP
 
   ; setup screen buffer in RAM, initialize to first frame
@@ -130,8 +131,8 @@ main:
   rcall roll_reg
   std Z+7,TEMP;
 
-  ; set initial brightness and direction
-  ldi BRIGHT,0x00
+  ; set initial intensity and direction
+  ldi INTENSITY,0x00
   ldi DIR,ASC
 
   ; set up max7221
@@ -167,7 +168,7 @@ main:
 
 loop:
   rcall update_screen
-  rcall update_brightness
+  rcall update_intensity
   rjmp loop
 
 
@@ -217,27 +218,33 @@ TIMER2_COMPA_vect:
   in TEMP,_SFR_IO_ADDR(SREG)
   push TEMP
 
-  ; adjust brightness
+  ; adjust intensity
   ldi COMP,ASC
-  inc BRIGHT
   cpse DIR,COMP
-  subi BRIGHT,2
+  rjmp direction_descending
+  rjmp direction_ascending
 
-  ldi COMP,DIR_SWITCH
-  cpse BRIGHT,COMP
+direction_descending:
+  dec INTENSITY
+  ldi COMP,INTENSITY_LO
+  rjmp flip_intensity_dir
+
+direction_ascending:
+  inc INTENSITY
+  ldi COMP,INTENSITY_HI
+  rjmp flip_intensity_dir
+
+flip_intensity_dir:
+  cpse INTENSITY,COMP
   rjmp return_from_timer2_isr
-  rjmp BAD_isr_loop
+  com DIR
+  ; we don't need an rjmp; it'll just go directly onto the next instruction
 
 return_from_timer2_isr:
   ; restore status register
   pop TEMP
   out _SFR_IO_ADDR(SREG),TEMP
   reti
-
-BAD_isr_loop:
-  ;rjmp BAD_isr_loop
-  com DIR
-  rjmp return_from_timer2_isr
 
 
 
@@ -270,9 +277,9 @@ update_screen:
 
 
 
-update_brightness:
+update_intensity:
   ldi REG,0x0A
-  mov VAL,BRIGHT
+  mov VAL,INTENSITY
   rcall send_packet
   ret
 
